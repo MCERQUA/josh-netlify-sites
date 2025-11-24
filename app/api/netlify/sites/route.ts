@@ -5,13 +5,14 @@ export async function GET() {
   try {
     const DATABASE_URL = process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL;
 
-    // If no database URL, return error
+    // If no database URL, return helpful setup message
     if (!DATABASE_URL) {
       return NextResponse.json({
         success: false,
         error: 'Database not configured',
         sites: [],
-        message: 'NETLIFY_DATABASE_URL environment variable not found'
+        message: 'NETLIFY_DATABASE_URL environment variable not found. Please configure your database connection.',
+        setupInstructions: 'See SETUP-DATABASE.md for setup instructions'
       }, { status: 400 });
     }
 
@@ -21,24 +22,55 @@ export async function GET() {
     });
 
     try {
+      // Check if sites table exists
+      const tableExists = await sql`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_schema = 'public'
+          AND table_name = 'sites'
+        )
+      `;
+
+      if (!tableExists[0]?.exists) {
+        await sql.end();
+        return NextResponse.json({
+          success: false,
+          error: 'Database not initialized',
+          sites: [],
+          message: 'The sites table does not exist yet.',
+          setupInstructions: 'Please visit /api/admin/sync-sites to initialize the database and sync your Netlify sites.'
+        }, { status: 400 });
+      }
+
       // Query sites from database
-      // Adjust table/column names based on your actual schema
       const sites = await sql`
         SELECT *
         FROM sites
         ORDER BY created_at DESC
       `;
 
+      // If no sites found, provide helpful message
+      if (sites.length === 0) {
+        await sql.end();
+        return NextResponse.json({
+          success: false,
+          error: 'No sites found',
+          sites: [],
+          message: 'The database is empty. No sites have been synced yet.',
+          setupInstructions: 'Please visit /api/admin/sync-sites to sync your Netlify sites to the database.'
+        }, { status: 200 });
+      }
+
       // Transform database rows to expected format
       const transformedSites = sites.map((site: any) => ({
-        id: site.id || site.site_id,
-        name: site.name || site.site_name,
-        url: site.url || site.site_url,
+        id: site.id,
+        name: site.name,
+        url: site.url,
         customDomain: site.custom_domain,
-        createdAt: site.created_at || new Date().toISOString(),
-        updatedAt: site.updated_at || new Date().toISOString(),
-        screenshotUrl: generateScreenshotUrl(site.custom_domain || site.url || site.site_url),
-        fallbackScreenshots: generateFallbackScreenshots(site.custom_domain || site.url || site.site_url),
+        createdAt: site.netlify_created_at || site.created_at,
+        updatedAt: site.netlify_updated_at || site.updated_at,
+        screenshotUrl: generateScreenshotUrl(site.custom_domain || site.url),
+        fallbackScreenshots: generateFallbackScreenshots(site.custom_domain || site.url),
       }));
 
       await sql.end();
@@ -61,6 +93,7 @@ export async function GET() {
       error: 'Failed to fetch sites from database',
       message: error instanceof Error ? error.message : 'Unknown error',
       sites: [],
+      setupInstructions: 'Check the server logs for details. You may need to run /api/admin/sync-sites first.'
     }, { status: 500 });
   }
 }

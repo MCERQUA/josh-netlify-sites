@@ -1,55 +1,64 @@
 import { NextResponse } from 'next/server';
+import postgres from 'postgres';
 
 export async function GET() {
   try {
-    const NETLIFY_TOKEN = process.env.NETLIFY_ACCESS_TOKEN;
+    const DATABASE_URL = process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL;
 
-    // If no token, return error message
-    if (!NETLIFY_TOKEN) {
+    // If no database URL, return error
+    if (!DATABASE_URL) {
       return NextResponse.json({
         success: false,
-        error: 'NETLIFY_ACCESS_TOKEN not configured',
+        error: 'Database not configured',
         sites: [],
-        message: 'Please add NETLIFY_ACCESS_TOKEN to your environment variables'
+        message: 'NETLIFY_DATABASE_URL environment variable not found'
       }, { status: 400 });
     }
 
-    // Fetch from real Netlify API
-    const response = await fetch('https://api.netlify.com/api/v1/sites', {
-      headers: {
-        'Authorization': `Bearer ${NETLIFY_TOKEN}`,
-      },
+    // Connect to Neon Postgres
+    const sql = postgres(DATABASE_URL, {
+      ssl: 'require',
     });
 
-    if (!response.ok) {
-      throw new Error(`Netlify API error: ${response.status}`);
+    try {
+      // Query sites from database
+      // Adjust table/column names based on your actual schema
+      const sites = await sql`
+        SELECT *
+        FROM sites
+        ORDER BY created_at DESC
+      `;
+
+      // Transform database rows to expected format
+      const transformedSites = sites.map((site: any) => ({
+        id: site.id || site.site_id,
+        name: site.name || site.site_name,
+        url: site.url || site.site_url,
+        customDomain: site.custom_domain,
+        createdAt: site.created_at || new Date().toISOString(),
+        updatedAt: site.updated_at || new Date().toISOString(),
+        screenshotUrl: generateScreenshotUrl(site.custom_domain || site.url || site.site_url),
+        fallbackScreenshots: generateFallbackScreenshots(site.custom_domain || site.url || site.site_url),
+      }));
+
+      await sql.end();
+
+      return NextResponse.json({
+        success: true,
+        sites: transformedSites,
+        total: transformedSites.length,
+        source: 'neon-database'
+      });
+    } catch (dbError) {
+      await sql.end();
+      throw dbError;
     }
-
-    const sites = await response.json();
-
-    // Transform sites data
-    const transformedSites = sites.map((site: any) => ({
-      id: site.id,
-      name: site.name,
-      url: site.url,
-      customDomain: site.custom_domain,
-      createdAt: site.created_at,
-      updatedAt: site.updated_at,
-      screenshotUrl: generateScreenshotUrl(site.custom_domain || site.url),
-      fallbackScreenshots: generateFallbackScreenshots(site.custom_domain || site.url),
-    }));
-
-    return NextResponse.json({
-      success: true,
-      sites: transformedSites,
-      total: transformedSites.length,
-    });
   } catch (error) {
-    console.error('Error fetching Netlify sites:', error);
+    console.error('Error fetching sites from database:', error);
 
     return NextResponse.json({
       success: false,
-      error: 'Failed to fetch sites from Netlify API',
+      error: 'Failed to fetch sites from database',
       message: error instanceof Error ? error.message : 'Unknown error',
       sites: [],
     }, { status: 500 });
@@ -57,6 +66,8 @@ export async function GET() {
 }
 
 function generateScreenshotUrl(url: string): string {
+  if (!url) return '';
+
   const apiflashKey = process.env.APIFLASH_KEY;
   if (apiflashKey) {
     const params = new URLSearchParams({
@@ -74,6 +85,8 @@ function generateScreenshotUrl(url: string): string {
 }
 
 function generateFallbackScreenshots(url: string): string[] {
+  if (!url) return [];
+
   return [
     `https://image.thum.io/get/width/1920/crop/1080/${url}`,
   ];

@@ -74,6 +74,7 @@ export function SiteCard({ site, onExclude }: SiteCardProps) {
             className={`w-full h-full object-cover ${imageLoading ? 'opacity-0' : 'opacity-100'} transition-opacity`}
             onError={handleImageError}
             onLoad={() => setImageLoading(false)}
+            loading="lazy"
           />
         )}
 

@@ -98,14 +98,26 @@ export async function GET() {
   }
 }
 
+function ensureProtocol(url: string): string {
+  if (!url) return '';
+  // If URL already has protocol, return as-is
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  // Add https:// if missing
+  return `https://${url}`;
+}
+
 function generateScreenshotUrl(url: string): string {
   if (!url) return '';
+
+  const fullUrl = ensureProtocol(url);
 
   const apiflashKey = process.env.APIFLASH_KEY;
   if (apiflashKey) {
     const params = new URLSearchParams({
       access_key: apiflashKey,
-      url: url,
+      url: fullUrl,
       width: '1920',
       height: '1080',
       delay: '2',
@@ -114,13 +126,15 @@ function generateScreenshotUrl(url: string): string {
     return `https://api.apiflash.com/v1/urltoimage?${params}`;
   }
 
-  return `https://api.screenshot.rocks/render?url=${encodeURIComponent(url)}&width=1920&height=1080`;
+  return `https://api.screenshot.rocks/render?url=${encodeURIComponent(fullUrl)}&width=1920&height=1080`;
 }
 
 function generateFallbackScreenshots(url: string): string[] {
   if (!url) return [];
 
+  const fullUrl = ensureProtocol(url);
+
   return [
-    `https://image.thum.io/get/width/1920/crop/1080/${url}`,
+    `https://image.thum.io/get/width/1920/crop/1080/${fullUrl}`,
   ];
 }

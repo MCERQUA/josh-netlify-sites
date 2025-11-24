@@ -189,18 +189,38 @@ export async function POST() {
         )
       `;
 
-      // Fetch sites from Netlify API
-      const response = await fetch('https://api.netlify.com/api/v1/sites', {
-        headers: {
-          'Authorization': `Bearer ${NETLIFY_TOKEN}`,
-        },
-      });
+      // Fetch ALL sites from Netlify API (handle pagination)
+      let allSites: any[] = [];
+      let page = 1;
+      let hasMore = true;
 
-      if (!response.ok) {
-        throw new Error(`Netlify API error: ${response.status}`);
+      while (hasMore) {
+        const response = await fetch(`https://api.netlify.com/api/v1/sites?page=${page}&per_page=100`, {
+          headers: {
+            'Authorization': `Bearer ${NETLIFY_TOKEN}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Netlify API error: ${response.status}`);
+        }
+
+        const sites = await response.json();
+
+        if (sites.length === 0) {
+          hasMore = false;
+        } else {
+          allSites = allSites.concat(sites);
+          page++;
+
+          // Safety limit to prevent infinite loops
+          if (page > 50) {
+            break;
+          }
+        }
       }
 
-      const sites = await response.json();
+      const sites = allSites;
 
       // Clear existing data and insert new sites
       await sql`TRUNCATE TABLE sites`;

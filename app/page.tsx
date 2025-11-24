@@ -94,8 +94,8 @@ export default function HomePage() {
       {/* Header */}
       <header className="border-b border-border bg-card">
         <div className="max-w-7xl mx-auto px-6 py-6">
-          <h1 className="text-3xl font-bold text-foreground">Netlify Domains Showcase</h1>
-          <p className="text-muted-foreground mt-2">A gallery of all our Netlify-hosted websites</p>
+          <h1 className="text-3xl font-bold text-foreground">Netlify Sites Gallery</h1>
+          <p className="text-muted-foreground mt-2">Showcasing all deployed Netlify websites</p>
         </div>
       </header>
 

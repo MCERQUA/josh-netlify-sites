@@ -1,45 +1,17 @@
 import { NextResponse } from 'next/server';
 
-// TEMPORARY: Static site data
-// TODO: Replace with actual Netlify API integration
-const MOCK_SITES = [
-  {
-    id: '1',
-    name: 'example-site-1',
-    url: 'https://example-site-1.netlify.app',
-    customDomain: 'example.com',
-    createdAt: '2024-01-15T10:00:00Z',
-    updatedAt: '2024-11-20T15:30:00Z',
-    screenshotUrl: 'https://api.screenshot.rocks/render?url=https://example.com&width=1920&height=1080',
-    fallbackScreenshots: [
-      'https://image.thum.io/get/width/1920/crop/1080/https://example.com',
-    ]
-  },
-  {
-    id: '2',
-    name: 'my-portfolio',
-    url: 'https://my-portfolio.netlify.app',
-    createdAt: '2024-02-20T14:00:00Z',
-    updatedAt: '2024-11-19T12:00:00Z',
-    screenshotUrl: 'https://api.screenshot.rocks/render?url=https://my-portfolio.netlify.app&width=1920&height=1080',
-    fallbackScreenshots: [
-      'https://image.thum.io/get/width/1920/crop/1080/https://my-portfolio.netlify.app',
-    ]
-  },
-];
-
 export async function GET() {
   try {
     const NETLIFY_TOKEN = process.env.NETLIFY_ACCESS_TOKEN;
 
-    // If no token, return mock data
+    // If no token, return error message
     if (!NETLIFY_TOKEN) {
-      console.warn('No NETLIFY_ACCESS_TOKEN found, using mock data');
       return NextResponse.json({
-        success: true,
-        sites: MOCK_SITES,
-        note: 'Using mock data - add NETLIFY_ACCESS_TOKEN to .env.local for real data'
-      });
+        success: false,
+        error: 'NETLIFY_ACCESS_TOKEN not configured',
+        sites: [],
+        message: 'Please add NETLIFY_ACCESS_TOKEN to your environment variables'
+      }, { status: 400 });
     }
 
     // Fetch from real Netlify API
@@ -70,16 +42,17 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       sites: transformedSites,
+      total: transformedSites.length,
     });
   } catch (error) {
     console.error('Error fetching Netlify sites:', error);
-    
-    // Return mock data on error
+
     return NextResponse.json({
-      success: true,
-      sites: MOCK_SITES,
-      note: 'Error fetching from Netlify API, using mock data'
-    });
+      success: false,
+      error: 'Failed to fetch sites from Netlify API',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      sites: [],
+    }, { status: 500 });
   }
 }
 

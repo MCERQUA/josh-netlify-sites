@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
+import postgres from 'postgres';
 
 export async function POST(request: Request) {
   try {
@@ -13,41 +12,48 @@ export async function POST(request: Request) {
       );
     }
 
-    // Read current excluded sites
-    const excludedPath = path.join(process.cwd(), 'data', 'excluded-sites.json');
-    let excludedSites: string[] = [];
+    const DATABASE_URL = process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL;
+
+    if (!DATABASE_URL) {
+      return NextResponse.json(
+        { success: false, error: 'Database not configured' },
+        { status: 500 }
+      );
+    }
+
+    // Connect to database
+    const sql = postgres(DATABASE_URL, { ssl: 'require' });
 
     try {
-      const data = await fs.readFile(excludedPath, 'utf-8');
-      excludedSites = JSON.parse(data);
-    } catch (error) {
-      // File doesn't exist yet, start with empty array
-      excludedSites = [];
+      // Create excluded_sites table if it doesn't exist
+      await sql`
+        CREATE TABLE IF NOT EXISTS excluded_sites (
+          site_id TEXT PRIMARY KEY,
+          excluded_at TIMESTAMP DEFAULT NOW()
+        )
+      `;
+
+      // Add site to excluded list (ignore if already exists)
+      await sql`
+        INSERT INTO excluded_sites (site_id)
+        VALUES (${siteId})
+        ON CONFLICT (site_id) DO NOTHING
+      `;
+
+      await sql.end();
+
+      return NextResponse.json({
+        success: true,
+        message: 'Site excluded successfully',
+      });
+    } catch (dbError) {
+      await sql.end();
+      throw dbError;
     }
-
-    // Add site to excluded list if not already there
-    if (!excludedSites.includes(siteId)) {
-      excludedSites.push(siteId);
-    }
-
-    // Ensure data directory exists
-    try {
-      await fs.mkdir(path.join(process.cwd(), 'data'), { recursive: true });
-    } catch (error) {
-      // Directory already exists
-    }
-
-    // Save updated list
-    await fs.writeFile(excludedPath, JSON.stringify(excludedSites, null, 2));
-
-    return NextResponse.json({
-      success: true,
-      message: 'Site excluded successfully',
-    });
   } catch (error) {
     console.error('Error excluding site:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to exclude site' },
+      { success: false, error: 'Failed to exclude site', message: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

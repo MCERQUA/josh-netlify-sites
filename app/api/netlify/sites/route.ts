@@ -42,12 +42,34 @@ export async function GET() {
         }, { status: 400 });
       }
 
-      // Query sites from database
-      const sites = await sql`
-        SELECT *
-        FROM sites
-        ORDER BY created_at DESC
+      // Check if excluded_sites table exists
+      const excludedTableExists = await sql`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_schema = 'public'
+          AND table_name = 'excluded_sites'
+        )
       `;
+
+      // Query sites from database, optionally excluding hidden sites
+      let sites;
+      if (excludedTableExists[0]?.exists) {
+        // Filter out excluded sites
+        sites = await sql`
+          SELECT s.*
+          FROM sites s
+          LEFT JOIN excluded_sites e ON s.id = e.site_id
+          WHERE e.site_id IS NULL
+          ORDER BY s.created_at DESC
+        `;
+      } else {
+        // No exclusions yet, return all sites
+        sites = await sql`
+          SELECT *
+          FROM sites
+          ORDER BY created_at DESC
+        `;
+      }
 
       // If no sites found, provide helpful message
       if (sites.length === 0) {

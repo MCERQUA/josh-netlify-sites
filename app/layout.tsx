@@ -2,8 +2,8 @@ import './globals.css'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Netlify Domains Showcase',
-  description: 'A beautiful gallery of all our Netlify-hosted domains',
+  title: 'Josh Domains',
+  description: 'All of Josh\'s domains and websites',
 }
 
 export default function RootLayout({

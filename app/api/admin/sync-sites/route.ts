@@ -185,9 +185,17 @@ export async function POST() {
           created_at TIMESTAMP DEFAULT NOW(),
           updated_at TIMESTAMP DEFAULT NOW(),
           netlify_created_at TEXT,
-          netlify_updated_at TEXT
+          netlify_updated_at TEXT,
+          source TEXT DEFAULT 'netlify'
         )
       `;
+
+      // Add source column if it doesn't exist (for existing tables)
+      try {
+        await sql`ALTER TABLE sites ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'netlify'`;
+      } catch (e) {
+        // Column might already exist
+      }
 
       // Fetch ALL sites from Netlify API (handle pagination)
       let allSites: any[] = [];
@@ -222,19 +230,20 @@ export async function POST() {
 
       const sites = allSites;
 
-      // Clear existing data and insert new sites
-      await sql`TRUNCATE TABLE sites`;
+      // Clear only Netlify-sourced sites (preserve WPMU and other sources)
+      await sql`DELETE FROM sites WHERE source = 'netlify' OR source IS NULL`;
 
       for (const site of sites) {
         await sql`
-          INSERT INTO sites (id, name, url, custom_domain, netlify_created_at, netlify_updated_at)
+          INSERT INTO sites (id, name, url, custom_domain, netlify_created_at, netlify_updated_at, source)
           VALUES (
             ${site.id},
             ${site.name},
             ${site.url},
             ${site.custom_domain || null},
             ${site.created_at},
-            ${site.updated_at}
+            ${site.updated_at},
+            'netlify'
           )
         `;
       }

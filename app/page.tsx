@@ -15,16 +15,21 @@ interface NetlifySite {
   customDomain?: string;
   createdAt: string;
   updatedAt: string;
+  hostingType?: 'netlify' | 'wpmu';
+  isNetlifySub?: boolean;
+  isDotCom?: boolean;
 }
 
 type ViewMode = 'grid' | 'list';
 type SortMode = 'name' | 'date' | 'domain';
+type FilterMode = 'all' | 'dotcom' | 'netlify' | 'wordpress';
 
 export default function HomePage() {
   const [sites, setSites] = useState<NetlifySite[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [sortMode, setSortMode] = useState<SortMode>('name');
+  const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const SITES_PER_PAGE = 20;
@@ -37,7 +42,10 @@ export default function HomePage() {
   async function fetchSites() {
     try {
       setLoading(true);
-      const response = await fetch('/api/netlify/sites');
+      const response = await fetch('/api/netlify/sites', {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
       const data = await response.json();
 
       if (data.success) {
@@ -58,18 +66,38 @@ export default function HomePage() {
         body: JSON.stringify({ siteId })
       });
 
-      if (response.ok) {
-        // Remove from UI
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Remove from UI - database exclusion confirmed
         setSites(sites.filter(site => site.id !== siteId));
+      } else {
+        console.error('Failed to exclude site:', data.error || data.message);
+        alert(`Failed to hide site: ${data.error || data.message || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error excluding site:', error);
+      alert('Failed to hide site. Please try again.');
     }
   }
 
   // Filter and sort sites
   const filteredAndSortedSites = sites
     .filter(site => {
+      // Apply hosting type filter
+      switch (filterMode) {
+        case 'dotcom':
+          if (!site.isDotCom) return false;
+          break;
+        case 'netlify':
+          if (site.hostingType !== 'netlify') return false;
+          break;
+        case 'wordpress':
+          if (site.hostingType !== 'wpmu') return false;
+          break;
+      }
+
+      // Apply search filter
       if (!searchQuery) return true;
       const query = searchQuery.toLowerCase();
       const url = (site.customDomain || site.url).toLowerCase();
@@ -108,13 +136,76 @@ export default function HomePage() {
     setCurrentPage(1);
   };
 
+  const handleFilterChange = (mode: FilterMode) => {
+    setFilterMode(mode);
+    setCurrentPage(1);
+  };
+
+  // Calculate counts for filter badges
+  const filterCounts = {
+    all: sites.length,
+    dotcom: sites.filter(s => s.isDotCom).length,
+    netlify: sites.filter(s => s.hostingType === 'netlify').length,
+    wordpress: sites.filter(s => s.hostingType === 'wpmu').length,
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border bg-card">
         <div className="max-w-7xl mx-auto px-6 py-6">
-          <h1 className="text-3xl font-bold text-foreground">Netlify Sites Gallery</h1>
-          <p className="text-muted-foreground mt-2">Showcasing all deployed Netlify websites</p>
+          <h1 className="text-3xl font-bold text-foreground">Josh Domains</h1>
+          <p className="text-muted-foreground mt-2">All of Josh's domains and websites</p>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex gap-1 border-b border-transparent -mb-px">
+            <button
+              onClick={() => handleFilterChange('all')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                filterMode === 'all'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted'
+              }`}
+            >
+              All Sites
+              <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-muted">{filterCounts.all}</span>
+            </button>
+            <button
+              onClick={() => handleFilterChange('dotcom')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                filterMode === 'dotcom'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted'
+              }`}
+            >
+              .com Domains
+              <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-muted">{filterCounts.dotcom}</span>
+            </button>
+            <button
+              onClick={() => handleFilterChange('netlify')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                filterMode === 'netlify'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted'
+              }`}
+            >
+              Netlify Sites
+              <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-muted">{filterCounts.netlify}</span>
+            </button>
+            <button
+              onClick={() => handleFilterChange('wordpress')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                filterMode === 'wordpress'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted'
+              }`}
+            >
+              WordPress Sites
+              <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-muted">{filterCounts.wordpress}</span>
+            </button>
+          </div>
         </div>
       </header>
 

@@ -1,6 +1,61 @@
 import { NextResponse } from 'next/server';
 import postgres from 'postgres';
 
+// Force dynamic to prevent caching - ensures excluded sites are filtered fresh
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+// WPMU domains using wpdns.host nameservers
+const WPMU_DOMAINS = new Set([
+  'barndominiuminsurance.com',
+  'bedlinerinsurance.com',
+  'contractorinsurance.io',
+  'customhomefinancing.com',
+  'fencinginsurance.com',
+  'foamdistributor.com',
+  'foameverything.com',
+  'jeepnamegenerator.com',
+  'northernarizonainsurance.com',
+  'sprayfoam101.com',
+  'sprayfoaminsurance.com',
+  'stormrestorationinsurance.com',
+  'toterhomeinsurance.com',
+  'wickenburginsurance.com',
+  'americanmadeinsurance.com',
+  'austinconcreteco.com',
+  'barndominiumfinancing.com',
+  'barndominiuminsulation.com',
+  'coatinginsurance.com',
+  'coatingsinsurance.com',
+  'coloradoconcreterepair.com',
+  'dieselrepairaz.com',
+  'foamtechsprayfoam.com',
+  'hairphdsalon.com',
+  'importcarinsurance.co',
+  'maricopalandscaping.com',
+  'northernlegacysprayfoam.com',
+  'roofinginsurance.com',
+  'sprayfoamrentalrig.com',
+  'ssvinsurance.com',
+  'tinyhomeinsulation.com',
+  'tracthomecontractorinsurance.com',
+  'wakeboatinsurance.com',
+  'youngconstruction.llc',
+  'brrrrinsurance.com',
+  'countrysidefinancing.com',
+  'denverconcreterepair.com',
+  'pikespeakconcreterepair.com',
+  'pontooninsurance.com',
+  'rzrinsurance.com',
+  'sedonainsurance.com',
+  'solarcontractorinsurance.com',
+  'sprayfoaminsulationscottsdale.com',
+  'sunlakesinsurance.com',
+  'thrillmotorsports.com',
+  'toyhaulerinsurance.com',
+  'tracthomeinsurance.com',
+]);
+
 export async function GET() {
   try {
     const DATABASE_URL = process.env.NETLIFY_DATABASE_URL || process.env.DATABASE_URL;
@@ -52,11 +107,13 @@ export async function GET() {
       `;
 
       // Query sites from database, optionally excluding hidden sites
+      // Use explicit column names to avoid cached plan issues after schema changes
       let sites;
       if (excludedTableExists[0]?.exists) {
         // Filter out excluded sites
         sites = await sql`
-          SELECT s.*
+          SELECT s.id, s.name, s.url, s.custom_domain, s.created_at, s.updated_at,
+                 s.netlify_created_at, s.netlify_updated_at, COALESCE(s.source, 'netlify') as source
           FROM sites s
           LEFT JOIN excluded_sites e ON s.id = e.site_id
           WHERE e.site_id IS NULL
@@ -65,7 +122,8 @@ export async function GET() {
       } else {
         // No exclusions yet, return all sites
         sites = await sql`
-          SELECT *
+          SELECT id, name, url, custom_domain, created_at, updated_at,
+                 netlify_created_at, netlify_updated_at, COALESCE(source, 'netlify') as source
           FROM sites
           ORDER BY created_at DESC
         `;
@@ -84,25 +142,41 @@ export async function GET() {
       }
 
       // Transform database rows to expected format
-      const transformedSites = sites.map((site: any) => ({
-        id: site.id,
-        name: site.name,
-        url: site.url,
-        customDomain: site.custom_domain,
-        createdAt: site.netlify_created_at || site.created_at,
-        updatedAt: site.netlify_updated_at || site.updated_at,
-        screenshotUrl: generateScreenshotUrl(site.custom_domain || site.url),
-        fallbackScreenshots: generateFallbackScreenshots(site.custom_domain || site.url),
-      }));
+      const transformedSites = sites.map((site: any) => {
+        const domain = extractDomain(site.custom_domain || site.url);
+        const isWpmu = WPMU_DOMAINS.has(domain);
+        const isNetlifySub = site.url?.includes('.netlify.app');
+        const isDotCom = domain.endsWith('.com');
+
+        return {
+          id: site.id,
+          name: site.name,
+          url: site.url,
+          customDomain: site.custom_domain,
+          createdAt: site.netlify_created_at || site.created_at,
+          updatedAt: site.netlify_updated_at || site.updated_at,
+          screenshotUrl: generateScreenshotUrl(site.custom_domain || site.url),
+          fallbackScreenshots: generateFallbackScreenshots(site.custom_domain || site.url),
+          hostingType: isWpmu ? 'wpmu' : 'netlify',
+          isNetlifySub,
+          isDotCom,
+        };
+      });
 
       await sql.end();
 
-      return NextResponse.json({
+      const response = NextResponse.json({
         success: true,
         sites: transformedSites,
         total: transformedSites.length,
         source: 'neon-database'
       });
+
+      // Ensure no caching - critical for excluded sites to persist
+      response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+      response.headers.set('Pragma', 'no-cache');
+
+      return response;
     } catch (dbError) {
       await sql.end();
       throw dbError;
@@ -118,6 +192,17 @@ export async function GET() {
       setupInstructions: 'Check the server logs for details. You may need to run /api/admin/sync-sites first.'
     }, { status: 500 });
   }
+}
+
+function extractDomain(urlOrDomain: string): string {
+  if (!urlOrDomain) return '';
+  // Remove protocol if present
+  let domain = urlOrDomain.replace(/^https?:\/\//, '');
+  // Remove path if present
+  domain = domain.split('/')[0];
+  // Remove www. prefix
+  domain = domain.replace(/^www\./, '');
+  return domain.toLowerCase();
 }
 
 function ensureProtocol(url: string): string {

@@ -113,7 +113,8 @@ export async function GET() {
         // Filter out excluded sites
         sites = await sql`
           SELECT s.id, s.name, s.url, s.custom_domain, s.created_at, s.updated_at,
-                 s.netlify_created_at, s.netlify_updated_at, COALESCE(s.source, 'netlify') as source
+                 s.netlify_created_at, s.netlify_updated_at, COALESCE(s.source, 'netlify') as source,
+                 s.screenshot_url, s.screenshot_updated_at
           FROM sites s
           LEFT JOIN excluded_sites e ON s.id = e.site_id
           WHERE e.site_id IS NULL
@@ -123,7 +124,8 @@ export async function GET() {
         // No exclusions yet, return all sites
         sites = await sql`
           SELECT id, name, url, custom_domain, created_at, updated_at,
-                 netlify_created_at, netlify_updated_at, COALESCE(source, 'netlify') as source
+                 netlify_created_at, netlify_updated_at, COALESCE(source, 'netlify') as source,
+                 screenshot_url, screenshot_updated_at
           FROM sites
           ORDER BY created_at DESC
         `;
@@ -148,6 +150,10 @@ export async function GET() {
         const isNetlifySub = site.url?.includes('.netlify.app');
         const isDotCom = domain.endsWith('.com');
 
+        // Use stored screenshot if available, otherwise generate one
+        const storedScreenshot = site.screenshot_url;
+        const generatedScreenshot = generateScreenshotUrl(site.custom_domain || site.url);
+
         return {
           id: site.id,
           name: site.name,
@@ -155,7 +161,11 @@ export async function GET() {
           customDomain: site.custom_domain,
           createdAt: site.netlify_created_at || site.created_at,
           updatedAt: site.netlify_updated_at || site.updated_at,
-          screenshotUrl: generateScreenshotUrl(site.custom_domain || site.url),
+          // Use stored screenshot (cached), fallback to generated if none stored yet
+          screenshotUrl: storedScreenshot || generatedScreenshot,
+          screenshotUpdatedAt: site.screenshot_updated_at,
+          hasStoredScreenshot: !!storedScreenshot,
+          // Keep fallback for error handling in frontend
           fallbackScreenshots: generateFallbackScreenshots(site.custom_domain || site.url),
           hostingType: isWpmu ? 'wpmu' : 'netlify',
           isNetlifySub,

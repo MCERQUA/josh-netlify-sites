@@ -18,6 +18,8 @@ interface NetlifySite {
   hostingType?: 'netlify' | 'wpmu';
   isNetlifySub?: boolean;
   isDotCom?: boolean;
+  hasStoredScreenshot?: boolean;
+  screenshotUpdatedAt?: string;
 }
 
 type ViewMode = 'grid' | 'list';
@@ -78,6 +80,39 @@ export default function HomePage() {
     } catch (error) {
       console.error('Error excluding site:', error);
       alert('Failed to hide site. Please try again.');
+    }
+  }
+
+  // Refresh screenshot for a site
+  async function handleRefreshScreenshot(siteId: string): Promise<string | null> {
+    try {
+      const response = await fetch('/api/netlify/screenshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteId })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Update the site in state with new screenshot URL
+        setSites(prevSites =>
+          prevSites.map(site =>
+            site.id === siteId
+              ? { ...site, screenshotUrl: data.screenshotUrl, hasStoredScreenshot: true }
+              : site
+          )
+        );
+        return data.screenshotUrl;
+      } else {
+        console.error('Failed to refresh screenshot:', data.error);
+        alert(`Failed to refresh screenshot: ${data.error || 'Unknown error'}`);
+        return null;
+      }
+    } catch (error) {
+      console.error('Error refreshing screenshot:', error);
+      alert('Failed to refresh screenshot. Please try again.');
+      return null;
     }
   }
 
@@ -279,6 +314,7 @@ export default function HomePage() {
                 key={site.id}
                 site={site}
                 onExclude={handleExcludeSite}
+                onRefreshScreenshot={handleRefreshScreenshot}
               />
             ))}
           </div>

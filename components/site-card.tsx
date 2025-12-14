@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from 'react';
-import { EyeOff, RefreshCw } from 'lucide-react';
+import { EyeOff, RefreshCw, Camera } from 'lucide-react';
 import { Button } from './button';
 
 interface SiteCardProps {
@@ -13,20 +13,25 @@ interface SiteCardProps {
     fallbackScreenshots?: string[];
     customDomain?: string;
     createdAt: string;
+    hasStoredScreenshot?: boolean;
+    screenshotUpdatedAt?: string;
   };
   onExclude: (siteId: string) => void;
+  onRefreshScreenshot?: (siteId: string) => Promise<string | null>;
 }
 
-export function SiteCard({ site, onExclude }: SiteCardProps) {
+export function SiteCard({ site, onExclude, onRefreshScreenshot }: SiteCardProps) {
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   const [showActions, setShowActions] = useState(false);
   const [currentScreenshotIndex, setCurrentScreenshotIndex] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [currentScreenshotUrl, setCurrentScreenshotUrl] = useState(site.screenshotUrl);
 
   const displayUrl = site.customDomain || site.url;
 
   // Get current screenshot URL to try
-  const currentScreenshot = site.fallbackScreenshots?.[currentScreenshotIndex] || site.screenshotUrl;
+  const currentScreenshot = site.fallbackScreenshots?.[currentScreenshotIndex] || currentScreenshotUrl;
 
   // Try next fallback screenshot when current one fails
   const handleImageError = () => {
@@ -44,6 +49,31 @@ export function SiteCard({ site, onExclude }: SiteCardProps) {
     setImageError(false);
     setImageLoading(true);
     setCurrentScreenshotIndex(0);
+  };
+
+  // Refresh screenshot from API
+  const handleRefreshScreenshot = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (isRefreshing) return;
+
+    setIsRefreshing(true);
+    try {
+      if (onRefreshScreenshot) {
+        const newUrl = await onRefreshScreenshot(site.id);
+        if (newUrl) {
+          setCurrentScreenshotUrl(newUrl);
+          setImageError(false);
+          setImageLoading(true);
+          setCurrentScreenshotIndex(0);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to refresh screenshot:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   return (
@@ -122,6 +152,22 @@ export function SiteCard({ site, onExclude }: SiteCardProps) {
       {/* Actions - appear on hover */}
       {showActions && (
         <div className="absolute top-2 right-2 flex gap-2">
+          {onRefreshScreenshot && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleRefreshScreenshot}
+              disabled={isRefreshing}
+              title="Refresh screenshot"
+              className="h-8 w-8 p-0"
+            >
+              {isRefreshing ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Camera className="w-4 h-4" />
+              )}
+            </Button>
+          )}
           <Button
             size="sm"
             variant="destructive"

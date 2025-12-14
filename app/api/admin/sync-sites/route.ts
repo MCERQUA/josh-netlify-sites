@@ -186,7 +186,9 @@ export async function POST() {
           updated_at TIMESTAMP DEFAULT NOW(),
           netlify_created_at TEXT,
           netlify_updated_at TEXT,
-          source TEXT DEFAULT 'netlify'
+          source TEXT DEFAULT 'netlify',
+          screenshot_url TEXT,
+          screenshot_updated_at TIMESTAMP
         )
       `;
 
@@ -195,6 +197,14 @@ export async function POST() {
         await sql`ALTER TABLE sites ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'netlify'`;
       } catch (e) {
         // Column might already exist
+      }
+
+      // Add screenshot columns if they don't exist
+      try {
+        await sql`ALTER TABLE sites ADD COLUMN IF NOT EXISTS screenshot_url TEXT`;
+        await sql`ALTER TABLE sites ADD COLUMN IF NOT EXISTS screenshot_updated_at TIMESTAMP`;
+      } catch (e) {
+        // Columns might already exist
       }
 
       // Fetch ALL sites from Netlify API (handle pagination)

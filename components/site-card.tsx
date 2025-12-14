@@ -155,11 +155,11 @@ export function SiteCard({ site, onExclude, onRefreshScreenshot }: SiteCardProps
           {onRefreshScreenshot && (
             <Button
               size="sm"
-              variant="secondary"
+              variant="ghost"
               onClick={handleRefreshScreenshot}
               disabled={isRefreshing}
               title="Refresh screenshot"
-              className="h-8 w-8 p-0"
+              className="h-8 w-8 p-0 bg-black/50 hover:bg-black/70 text-white"
             >
               {isRefreshing ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />

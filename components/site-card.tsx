@@ -30,12 +30,15 @@ export function SiteCard({ site, onExclude, onRefreshScreenshot }: SiteCardProps
 
   const displayUrl = site.customDomain || site.url;
 
-  // Get current screenshot URL to try
-  const currentScreenshot = site.fallbackScreenshots?.[currentScreenshotIndex] || currentScreenshotUrl;
+  // Get current screenshot URL to try - main URL first, then fallbacks
+  const currentScreenshot = currentScreenshotIndex === 0
+    ? currentScreenshotUrl
+    : site.fallbackScreenshots?.[currentScreenshotIndex - 1] || currentScreenshotUrl;
 
   // Try next fallback screenshot when current one fails
   const handleImageError = () => {
-    if (site.fallbackScreenshots && currentScreenshotIndex < site.fallbackScreenshots.length - 1) {
+    const maxFallbacks = site.fallbackScreenshots?.length || 0;
+    if (currentScreenshotIndex < maxFallbacks) {
       setCurrentScreenshotIndex(currentScreenshotIndex + 1);
       setImageLoading(true);
     } else {
